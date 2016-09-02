@@ -232,7 +232,9 @@ impl Wheel {
 
             if self.time_to_ticks(head_timeout) <= self.time_to_ticks(at) {
                 let task = match self.remove_slab(head) {
-                    Some(Entry::Timeout(v)) => Some(v.task),
+                    Some(Entry::Timeout(v)) => {
+                        Some(v.task)
+                    }
                     _ => None,
                 };
 

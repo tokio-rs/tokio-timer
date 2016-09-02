@@ -18,17 +18,16 @@ fn test_immediate_timeout() {
 
 #[test]
 fn test_delayed_timeout() {
-    let _ = ::env_logger::init();
-
     let timer = Timer::default();
-
     let dur = Duration::from_millis(200);
 
-    let elapsed = support::time(|| {
-        timer.set_timeout(Instant::now() + dur)
-            .wait()
-            .unwrap();
-    });
+    for _ in 0..20 {
+        let elapsed = support::time(|| {
+            timer.set_timeout(Instant::now() + dur)
+                .wait()
+                .unwrap();
+        });
 
-    elapsed.assert_is_about(dur);
+        elapsed.assert_is_about(dur);
+    }
 }

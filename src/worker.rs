@@ -5,13 +5,14 @@ use {mpmc};
 use self::exchange::Exchange;
 use wheel::{Token, Wheel};
 use futures::task::Task;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::thread::{self, Thread};
 
 #[derive(Clone)]
 pub struct Worker {
     tx: Tx,
     worker: Thread,
+    tolerance: Duration,
 }
 
 /// Communicate with the timer thread
@@ -43,7 +44,7 @@ type ModQueue = mpmc::Queue<ModTimeout>;
 
 impl Worker {
     /// Spawn a worker, returning a handle to allow communication
-    pub fn spawn(mut wheel: Wheel, capacity: usize) -> Worker {
+    pub fn spawn(mut wheel: Wheel, tolerance: Duration, capacity: usize) -> Worker {
         // Assert that the wheel has at least capacity available timeouts
         assert!(wheel.available() >= capacity);
 
@@ -65,7 +66,13 @@ impl Worker {
                 mod_timeouts: q2,
             },
             worker: t.thread().clone(),
+            tolerance: tolerance,
         }
+    }
+
+    /// The earliest a timeout can fire before the requested `Instance`
+    pub fn tolerance(&self) -> &Duration {
+        &self.tolerance
     }
 
     /// Set a timeout

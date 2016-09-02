@@ -19,8 +19,10 @@ pub struct Timeout {
 }
 
 pub fn build(builder: Builder) -> Timer {
+    let tick = builder.get_tick_duration();
+
     let wheel = Wheel::new(&builder);
-    let worker = Worker::spawn(wheel, builder.get_channel_capacity());
+    let worker = Worker::spawn(wheel, tick, builder.get_channel_capacity());
 
     Timer { worker: worker }
 }
@@ -50,7 +52,7 @@ impl Default for Timer {
 
 impl Timeout {
     pub fn is_expired(&self) -> bool {
-        Instant::now() >= self.when
+        Instant::now() >= self.when - *self.worker.tolerance()
     }
 }
 
@@ -59,7 +61,7 @@ impl Future for Timeout {
     type Error = ();
 
     fn poll(&mut self) -> Poll<(), ()> {
-        trace!("Timeout::poll");
+        trace!("Timeout::poll; when={:?}", self.when);
 
         if self.is_expired() {
             trace!("  --> expired; returning");
@@ -80,7 +82,10 @@ impl Future for Timeout {
                 let task = task::park();
 
                 match self.worker.set_timeout(self.when, task.clone()) {
-                    Ok(token) => (task, token),
+                    Ok(token) => {
+                        trace!("  --> timeout set; token={:?}", token);
+                        (task, token)
+                    }
                     Err(task) => {
                         // The timer is overloaded, yield the current task
                         task.unpark();
@@ -90,14 +95,14 @@ impl Future for Timeout {
             }
             Some((ref task, token)) => {
                 if task.is_current() {
-                    trace!("  --> handle current -- NotReady");
+                    trace!("  --> handle current -- NotReady; token={:?}; now={:?}", token, Instant::now());
 
                     // Nothing more to do, the notify on timeout has already
                     // been registered
                     return Ok(Async::NotReady);
                 }
 
-                trace!("  --> timeout moved -- notifying timer");
+                trace!("  --> timeout moved -- notifying timer; when={:?}", self.when);
 
                 let task = task::park();
 
