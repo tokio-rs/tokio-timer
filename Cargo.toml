@@ -1,0 +1,12 @@
+[package]
+name = "tokio-timer"
+version = "0.1.0"
+authors = ["Carl Lerche <me@carllerche.com>"]
+
+[dependencies]
+futures = { git = "https://github.com/alexcrichton/futures-rs" }
+slab = "0.3.0"
+log = "0.3.6"
+
+[dev-dependencies]
+env_logger = "0.3.4"
