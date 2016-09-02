@@ -1,0 +1,22 @@
+language: rust
+
+rust:
+  - nightly
+  - stable
+  - 1.10.0
+
+os:
+  - linux
+  - osx
+
+before_script:
+  - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
+
+script:
+  - cargo build
+  - cargo test
+  - cargo doc --no-deps
+
+notifications:
+  email:
+    on_success: never
