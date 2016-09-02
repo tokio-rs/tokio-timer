@@ -1,7 +1,7 @@
 use {Builder, wheel};
 use worker::Worker;
 use wheel::{Token, Wheel};
-use futures::{Future, Poll};
+use futures::{Future, Async, Poll};
 use futures::task::{self, Task};
 use std::time::Instant;
 
@@ -63,7 +63,7 @@ impl Future for Timeout {
 
         if self.is_expired() {
             trace!("  --> expired; returning");
-            return Poll::Ok(());
+            return Ok(Async::Ready(()));
         }
 
         // The timeout has not expired, so perform any necessary operations
@@ -84,7 +84,7 @@ impl Future for Timeout {
                     Err(task) => {
                         // The timer is overloaded, yield the current task
                         task.unpark();
-                        return Poll::NotReady;
+                        return Ok(Async::NotReady);
                     }
                 }
             }
@@ -94,7 +94,7 @@ impl Future for Timeout {
 
                     // Nothing more to do, the notify on timeout has already
                     // been registered
-                    return Poll::NotReady;
+                    return Ok(Async::NotReady);
                 }
 
                 trace!("  --> timeout moved -- notifying timer");
@@ -108,7 +108,7 @@ impl Future for Timeout {
                     Err(task) => {
                         // Overloaded timer, yield hte current task
                         task.unpark();
-                        return Poll::NotReady;
+                        return Ok(Async::NotReady);
                     }
                 }
             }
@@ -119,7 +119,7 @@ impl Future for Timeout {
         // Moved out here to make the borrow checker happy
         self.handle = Some(handle);
 
-        Poll::NotReady
+        Ok(Async::NotReady)
     }
 }
 

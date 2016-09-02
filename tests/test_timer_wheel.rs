@@ -13,7 +13,7 @@ fn test_immediate_timeout() {
     let timer = Timer::default();
 
     let mut t = timer.set_timeout(Instant::now());
-    assert_eq!(Poll::Ok(()), t.poll());
+    assert_eq!(Ok(Async::Ready(())), t.poll());
 }
 
 #[test]
