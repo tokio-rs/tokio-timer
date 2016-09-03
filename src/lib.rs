@@ -1,18 +1,18 @@
 //! Timer facilities for Tokio
 //!
-//! ## Hashed Timing Wheel
-//!
-//! Inspired by the [paper by Varghese and
-//! Lauck](http://www.cs.columbia.edu/~nahum/w6998/papers/ton97-timing-wheels.pdf),
-//! the hashed timing wheel is a great choice for the usage pattern commonly
-//! found when writing network applications.
+//! The default timer implementation is a hashed timing wheel. This structure
+//! provides the best runtime characteristics for the majority of network
+//! application patterns **as long as it is correctly configured**. A hashed
+//! timing wheel's worst case is `O(n)` where `n` is the number of pending
+//! timeouts.
 //!
 //! ## Example
 //!
 //! Here is a simple example of how to use the timer.
 //!
-//! ```rust
+//! ```rust,ignore
 //! use tokio_timer::*;
+//! use futures::*;
 //! use std::time::*;
 //!
 //! // Create a new timer with default settings. While this is the easiest way
@@ -26,8 +26,35 @@
 //! // Use the `Future::wait` to block the current thread until `Timeout`
 //! // future completes.
 //! //
-//! // timeout.wait();
+//! timeout.wait();
 //! ```
+//!
+//! ## Hashed Timing Wheel
+//!
+//! Inspired by the [paper by Varghese and
+//! Lauck](http://www.cs.columbia.edu/~nahum/w6998/papers/ton97-timing-wheels.pdf),
+//! the hashed timing wheel is a great choice for the usage pattern commonly
+//! found when writing network applications.
+//!
+//! A hashed wheel timer is implemented as a vector of "slots" that represent
+//! time slices. The default slot size is 100ms. As time progresses, the timer
+//! walks over each slot and looks in the slot to find all timers that are due
+//! to expire. When the timer reaches the end of the vector, it starts back at
+//! the beginning.
+//!
+//! A timer is assigned to a slot by taking the expiration instant and
+//! assigning it to a slot, factoring in wrapping. When there are more than one
+//! timeouts assigned to a given slot, they are stored in a linked list.
+//!
+//! This structure allows constant time timer operations **as long as timeouts
+//! don't collide**. In other words, if two timeouts are set to expire at
+//! exactly `num-slots * tick-duration` time apart, they will be assigned to
+//! the same bucket.
+//!
+//! The best way to avoid collisions is to ensure that no timeout is set that
+//! is for greater than `num-slots * dick-duration` into the future.
+//!
+//! A timer can be configured with `Builder`.
 
 extern crate futures;
 extern crate slab;
@@ -45,6 +72,8 @@ use std::cmp;
 use std::time::Duration;
 
 /// Configures and builds a `Timer`
+///
+/// A `Builder` is obtained by calling `wheel()`.
 pub struct Builder {
     tick_duration: Option<Duration>,
     num_slots: Option<usize>,
