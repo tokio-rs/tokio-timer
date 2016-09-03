@@ -3,12 +3,22 @@ use worker::Worker;
 use wheel::{Token, Wheel};
 use futures::{Future, Async, Poll};
 use futures::task::{self, Task};
+use std::fmt;
 use std::time::Instant;
 
 /// A facility for scheduling timeouts
 #[derive(Clone)]
 pub struct Timer {
     worker: Worker,
+}
+
+/// The error type for timeout operations.
+#[derive(Debug, Clone)]
+pub enum Error {
+    /// The requested timeout exceeds the timer's `max_timeout` setting.
+    TooLong,
+    /// The timer has reached capacity and cannot support new timeouts.
+    NoCapacity,
 }
 
 /// A `Future` that completes at the requested instance
@@ -19,10 +29,8 @@ pub struct Timeout {
 }
 
 pub fn build(builder: Builder) -> Timer {
-    let tick = builder.get_tick_duration();
-
     let wheel = Wheel::new(&builder);
-    let worker = Worker::spawn(wheel, tick, builder.get_channel_capacity());
+    let worker = Worker::spawn(wheel, &builder);
 
     Timer { worker: worker }
 }
@@ -66,9 +74,9 @@ impl Timeout {
 
 impl Future for Timeout {
     type Item = ();
-    type Error = ();
+    type Error = Error;
 
-    fn poll(&mut self) -> Poll<(), ()> {
+    fn poll(&mut self) -> Poll<(), Error> {
         trace!("Timeout::poll; when={:?}", self.when);
 
         if self.is_expired() {
@@ -82,7 +90,12 @@ impl Future for Timeout {
 
         let handle = match self.handle {
             None => {
-                // An wakeup request has not yet been sent to the timer.
+                // An wakeup request has not yet been sent to the timer. Before
+                // doing so, check to ensure that the requested timeout does
+                // not exceed the `max_timeout` duration
+                if (self.when - Instant::now()) > *self.worker.max_timeout() {
+                    return Err(Error::TooLong);
+                }
 
                 trace!("  --> no handle; parking");
 
@@ -140,6 +153,21 @@ impl Drop for Timeout {
     fn drop(&mut self) {
         if let Some((_, token)) = self.handle {
             self.worker.cancel_timeout(token, self.when);
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", ::std::error::Error::description(self))
+    }
+}
+
+impl ::std::error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::TooLong => "requested timeout too long",
+            Error::NoCapacity => "timer out of capacity",
         }
     }
 }

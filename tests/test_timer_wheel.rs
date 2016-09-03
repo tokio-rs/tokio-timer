@@ -14,7 +14,7 @@ fn test_immediate_timeout() {
     let timer = Timer::default();
 
     let mut t = timer.set_timeout(Instant::now());
-    assert_eq!(Ok(Async::Ready(())), t.poll());
+    assert_eq!(Async::Ready(()), t.poll().unwrap());
 }
 
 #[test]
@@ -57,10 +57,9 @@ fn test_setting_later_timeout_then_earlier_one() {
 
 #[test]
 fn test_timer_with_looping_wheel() {
-    let _ = ::env_logger::init();
-
     let timer = timer::wheel()
         .num_slots(8)
+        .max_timeout(Duration::from_millis(10_000))
         .build();
 
     let dur1 = Duration::from_millis(200);
@@ -74,4 +73,17 @@ fn test_timer_with_looping_wheel() {
 
     e1.assert_is_about(dur1);
     e2.assert_is_about(Duration::from_millis(800));
+}
+
+#[test]
+fn test_request_timeout_greater_than_max() {
+    let timer = timer::wheel()
+        .max_timeout(Duration::from_millis(500))
+        .build();
+
+    let to = timer.set_timeout(Instant::now() + Duration::from_millis(600));
+    assert!(to.wait().is_err());
+
+    let to = timer.set_timeout(Instant::now() + Duration::from_millis(500));
+    assert!(to.wait().is_ok());
 }

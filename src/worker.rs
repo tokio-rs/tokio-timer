@@ -1,6 +1,7 @@
 //! This code is needed in order to support a channel that can receive with a
 //! timeout.
 
+use Builder;
 use mpmc::Queue;
 use wheel::{Token, Wheel};
 use futures::task::Task;
@@ -20,6 +21,7 @@ struct Tx {
     chan: Arc<Chan>,
     worker: Thread,
     tolerance: Duration,
+    max_timeout: Duration,
 }
 
 struct Chan {
@@ -42,7 +44,11 @@ type ModQueue = Queue<ModTimeout, ()>;
 
 impl Worker {
     /// Spawn a worker, returning a handle to allow communication
-    pub fn spawn(mut wheel: Wheel, tolerance: Duration, capacity: usize) -> Worker {
+    pub fn spawn(mut wheel: Wheel, builder: &Builder) -> Worker {
+        let tolerance = builder.get_tick_duration();
+        let max_timeout = builder.get_max_timeout();
+        let capacity = builder.get_channel_capacity();
+
         // Assert that the wheel has at least capacity available timeouts
         assert!(wheel.available() >= capacity);
 
@@ -62,6 +68,7 @@ impl Worker {
                 chan: chan,
                 worker: t.thread().clone(),
                 tolerance: tolerance,
+                max_timeout: max_timeout,
             }),
         }
     }
@@ -69,6 +76,10 @@ impl Worker {
     /// The earliest a timeout can fire before the requested `Instance`
     pub fn tolerance(&self) -> &Duration {
         &self.tx.tolerance
+    }
+
+    pub fn max_timeout(&self) -> &Duration {
+        &self.tx.max_timeout
     }
 
     /// Set a timeout
