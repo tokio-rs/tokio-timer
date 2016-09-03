@@ -46,3 +46,7 @@ license and the Apache License (Version 2.0), with portions covered by
 various BSD-like licenses.
 
 See LICENSE-APACHE, and LICENSE-MIT for details.
+
+The MPMC queue implementation is inspired from
+[1024cores](http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue),
+see LICENSE-MPMC for details.
