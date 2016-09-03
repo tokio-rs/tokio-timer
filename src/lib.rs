@@ -10,23 +10,28 @@
 //!
 //! Here is a simple example of how to use the timer.
 //!
-//! ```rust,ignore
+//! ```rust
+//! extern crate tokio_timer;
+//! extern crate futures;
+//!
 //! use tokio_timer::*;
 //! use futures::*;
 //! use std::time::*;
 //!
-//! // Create a new timer with default settings. While this is the easiest way
-//! // to get a timer, usually you will want to tune the config settings for
-//! // your usage patterns.
-//! let timer = Timer::default();
+//! pub fn main() {
+//!     // Create a new timer with default settings. While this is the easiest way
+//!     // to get a timer, usually you will want to tune the config settings for
+//!     // your usage patterns.
+//!     let timer = Timer::default();
 //!
-//! // Set a timeout that expires in 500 milliseconds
-//! let timeout = timer.set_timeout(Instant::now() + Duration::from_millis(500));
+//!     // Set a timeout that expires in 500 milliseconds
+//!     let timeout = timer.set_timeout(Instant::now() + Duration::from_millis(500));
 //!
-//! // Use the `Future::wait` to block the current thread until `Timeout`
-//! // future completes.
-//! //
-//! timeout.wait();
+//!     // Use the `Future::wait` to block the current thread until `Timeout`
+//!     // future completes.
+//!     //
+//!     timeout.wait();
+//! }
 //! ```
 //!
 //! ## Hashed Timing Wheel
