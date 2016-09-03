@@ -19,9 +19,9 @@ impl Elapsed {
         let tolerance = Duration::from_millis(TOLERANCE_MS);
 
         if self.duration > dur {
-            assert!(self.duration - dur <= tolerance);
+            assert!(self.duration - dur <= tolerance, "expect={:?}; actual={:?}", dur, self.duration);
         } else {
-            assert!(dur - self.duration <= tolerance);
+            assert!(dur - self.duration <= tolerance, "expect={:?}; actual={:?}", dur, self.duration);
         }
     }
 }

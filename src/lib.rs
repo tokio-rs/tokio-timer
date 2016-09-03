@@ -25,7 +25,8 @@
 //!
 //! // Use the `Future::wait` to block the current thread until `Timeout`
 //! // future completes.
-//! timeout.wait();
+//! //
+//! // timeout.wait();
 //! ```
 
 extern crate futures;
