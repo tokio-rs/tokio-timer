@@ -18,6 +18,13 @@ script:
   - cargo test
   - cargo doc --no-deps
 
+after_success:
+  - travis-cargo --only nightly doc-upload
+
+env:
+  global:
+    - secure: "D+P9b3IJ1DDFVwJoBg1XfNssI2epkBI1XjZM6QweZt2fIXaVX428FArqHWOu484LqQ7+jZkYg1hP3R4VrtNZOwVo+2vATMY947pBnVJsAiW8Vem8NmOYr4T/e77ypPFfp/LWQUyy9z3pRMoIY9cAH8+sL3LlFIEDWofl5UN/rBNwsdROBDmRt+ihUQ2MSrFUSF5LVpj+qq5uZYc5J4Nv4TuM3J8752VchdVr3c1aOHSyP5RCNUYl9Gzvt4f1Smb6phQhw4Y8oYf0Gfu8a3TSZczIEG3OipnTunMIxElENKsTcphbEJM9ta2WbevSxOE7w7FWydbVEcexAyO+f6H5Pu6r2j6hV3HXMLcT1JW5Pm1f1bzdF4k2AgqQ2zQN6ZnCRJBYRXpA94wz/xUG8VFA7qaGQGJLulpFtGrRBEv1PlANCCnXLUokSgVuxHVS2GZvitjxReCyIuNXUlsSwQMjoUmouKcOkj817NT45uKCnVqGWIzZyM5K4OAGP+HIVrzl9PnDeqZrdCQBekKmv3z4p+WT0x8YAqTrPeXtEB3u/9QB8kYJr8qqL6QNolaTQNItJdtF6zy0xeIEvw2lvF6H3icT2oLpDozRrtIeLbYT1Ze9JwFUyBCy2YD5GZ3UectioFGBslyHEQdzvej03OA6Llrs1ByRr6IfczSLmznqi5g="
+
 notifications:
   email:
     on_success: never
