@@ -51,6 +51,14 @@ impl Default for Timer {
  */
 
 impl Timeout {
+    /// Returns true if the `Timeout` is expired.
+    ///
+    /// A timeout is expired when the current instant is past the instant
+    /// specified when requesting the timeout. In practice, the timeout can
+    /// expire slightly before the requested instant as the timer is not
+    /// precise.
+    ///
+    /// See the crate docs for more detail.
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.when - *self.worker.tolerance()
     }
