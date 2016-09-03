@@ -101,7 +101,7 @@ pub fn wheel() -> Builder {
 }
 
 impl Builder {
-    pub fn get_tick_duration(&self) -> Duration {
+    fn get_tick_duration(&self) -> Duration {
         self.tick_duration.unwrap_or(Duration::from_millis(100))
     }
 
@@ -110,7 +110,7 @@ impl Builder {
         self
     }
 
-    pub fn get_num_slots(&self) -> usize {
+    fn get_num_slots(&self) -> usize {
         // About 6 minutes at a 100 ms tick size
         self.num_slots.unwrap_or(4_096)
     }
@@ -123,7 +123,7 @@ impl Builder {
     /// Gets the initial capacity of the timer
     ///
     /// Default: 128
-    pub fn get_initial_capacity(&self) -> usize {
+    fn get_initial_capacity(&self) -> usize {
         let cap = self.initial_capacity.unwrap_or(256);
         cmp::max(cap, self.get_channel_capacity())
     }
@@ -137,7 +137,7 @@ impl Builder {
     /// Get the max capacity of the timer
     ///
     /// Default: 4,194,304
-    pub fn get_max_capacity(&self) -> usize {
+    fn get_max_capacity(&self) -> usize {
         self.max_capacity.unwrap_or(4_194_304)
     }
 
@@ -146,7 +146,7 @@ impl Builder {
         self
     }
 
-    pub fn get_max_timeout(&self) -> Duration {
+    fn get_max_timeout(&self) -> Duration {
         let default = self.get_tick_duration() * self.get_num_slots() as u32;
         self.max_timeout.unwrap_or(default)
     }
@@ -159,7 +159,7 @@ impl Builder {
     /// Gets the current channel capacity value
     ///
     /// Defaults to 128
-    pub fn get_channel_capacity(&self) -> usize {
+    fn get_channel_capacity(&self) -> usize {
         self.channel_capacity.unwrap_or(128)
     }
 
