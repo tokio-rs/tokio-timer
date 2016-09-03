@@ -2,6 +2,11 @@
 
 Timer facilities for Tokio
 
+[![Build Status](https://travis-ci.org/tokio-rs/tokio-timer.svg?branch=master)](https://travis-ci.org/tokio-rs/tokio-timer)
+
+[Documentation](https://tokio-rs.github.io/tokio-timer) |
+[Gitter](https://gitter.im/tokio-rs/tokio)
+
 ## Usage
 
 First, add this to your `Cargo.toml`:
