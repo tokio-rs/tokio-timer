@@ -5,25 +5,26 @@ use {mpmc};
 use self::exchange::Exchange;
 use wheel::{Token, Wheel};
 use futures::task::Task;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use std::thread::{self, Thread};
 
 #[derive(Clone)]
 pub struct Worker {
-    tx: Tx,
-    worker: Thread,
-    tolerance: Duration,
+    tx: Arc<Tx>,
 }
 
 /// Communicate with the timer thread
 #[derive(Clone)]
 struct Tx {
-    set_timeouts: Exchange,
-    mod_timeouts: ModQueue,
+    chan: Arc<Chan>,
+    worker: Thread,
+    tolerance: Duration,
 }
 
-/// Used by the timer thread
-struct Rx {
+struct Chan {
+    run: AtomicBool,
     set_timeouts: Exchange,
     mod_timeouts: ModQueue,
 }
@@ -48,48 +49,46 @@ impl Worker {
         // Assert that the wheel has at least capacity available timeouts
         assert!(wheel.available() >= capacity);
 
-        // Create a queue for message passing with the worker thread
-        let q1 = Exchange::with_capacity(capacity, || wheel.reserve().unwrap());
-        let q2 = mpmc::Queue::with_capacity(capacity);
+        let chan = Arc::new(Chan {
+            run: AtomicBool::new(true),
+            set_timeouts: Exchange::with_capacity(capacity, || wheel.reserve().unwrap()),
+            mod_timeouts: mpmc::Queue::with_capacity(capacity),
+        });
 
-        let rx = Rx {
-            set_timeouts: q1.clone(),
-            mod_timeouts: q2.clone(),
-        };
+        let chan2 = chan.clone();
 
         // Spawn the worker thread
-        let t = thread::spawn(move || run(rx, wheel));
+        let t = thread::spawn(move || run(chan2, wheel));
 
         Worker {
-            tx: Tx {
-                set_timeouts: q1,
-                mod_timeouts: q2,
-            },
-            worker: t.thread().clone(),
-            tolerance: tolerance,
+            tx: Arc::new(Tx {
+                chan: chan,
+                worker: t.thread().clone(),
+                tolerance: tolerance,
+            }),
         }
     }
 
     /// The earliest a timeout can fire before the requested `Instance`
     pub fn tolerance(&self) -> &Duration {
-        &self.tolerance
+        &self.tx.tolerance
     }
 
     /// Set a timeout
     pub fn set_timeout(&self, when: Instant, task: Task) -> Result<Token, Task> {
-        self.tx.set_timeouts.push_exch(when, task)
+        self.tx.chan.set_timeouts.push_exch(when, task)
             .and_then(|ret| {
                 // Unpark the timer thread
-                self.worker.unpark();
+                self.tx.worker.unpark();
                 Ok(ret)
             })
     }
 
     /// Move a timeout
     pub fn move_timeout(&self, token: Token, when: Instant, task: Task) -> Result<(), Task> {
-        self.tx.mod_timeouts.push(ModTimeout::Move(token, when, task))
+        self.tx.chan.mod_timeouts.push(ModTimeout::Move(token, when, task))
             .and_then(|ret| {
-                self.worker.unpark();
+                self.tx.worker.unpark();
                 Ok(ret)
             })
             .map_err(|v| {
@@ -110,14 +109,12 @@ impl Worker {
         // 2) Not being able to cancel a timeout is not a huge deal and only
         //    results in a spurious wakeup.
         //
-        let _ = self.tx.mod_timeouts.push(ModTimeout::Cancel(token, instant));
+        let _ = self.tx.chan.mod_timeouts.push(ModTimeout::Cancel(token, instant));
     }
 }
 
-fn run(rx: Rx, mut wheel: Wheel) {
-    // Run forever
-    // TODO: Don't run forever
-    loop {
+fn run(chan: Arc<Chan>, mut wheel: Wheel) {
+    while chan.run.load(Ordering::Relaxed) {
         let now = Instant::now();
 
         trace!("Worker tick; now={:?}", now);
@@ -131,7 +128,7 @@ fn run(rx: Rx, mut wheel: Wheel) {
         // As long as the wheel has capacity to manage new timeouts, read off
         // of the queue.
         while let Some(token) = wheel.reserve() {
-            match rx.set_timeouts.pop_exch(token) {
+            match chan.set_timeouts.pop_exch(token) {
                 Ok((token, when, task)) => {
                     trace!("  --> SetTimeout; token={:?}; instant={:?}", token, when);
                     wheel.set_timeout(token, when, task);
@@ -144,7 +141,7 @@ fn run(rx: Rx, mut wheel: Wheel) {
         }
 
         loop {
-            match rx.mod_timeouts.pop() {
+            match chan.mod_timeouts.pop() {
                 Some(ModTimeout::Move(token, when, task)) => {
                     trace!("  --> ModTimeout::Move; token={:?}; instant={:?}", token, when);
                     wheel.move_timeout(token, when, task);
@@ -165,6 +162,15 @@ fn run(rx: Rx, mut wheel: Wheel) {
         } else {
             thread::park();
         }
+    }
+
+    trace!("shutting down timer");
+}
+
+impl Drop for Tx {
+    fn drop(&mut self) {
+        self.chan.run.store(false, Ordering::Relaxed);
+        self.worker.unpark();
     }
 }
 
@@ -214,23 +220,13 @@ mod exchange {
     use wheel::Token;
     use futures::task::Task;
     use std::ptr;
-    use std::sync::Arc;
     use std::cell::UnsafeCell;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
     use std::time::Instant;
 
-    pub struct Exchange {
-        state: Arc<State>,
-    }
-
-    struct Node {
-        sequence: AtomicUsize,
-        value: SetTimeout,
-    }
-
     #[allow(dead_code)]
-    struct State {
+    pub struct Exchange {
         pad0: [u8; 64],
         buffer: Vec<UnsafeCell<Node>>,
         mask: usize,
@@ -241,11 +237,13 @@ mod exchange {
         pad3: [u8; 64],
     }
 
-    unsafe impl Send for State {}
-    unsafe impl Sync for State {}
+    struct Node {
+        sequence: AtomicUsize,
+        value: SetTimeout,
+    }
 
-    impl State {
-        fn with_capacity<F>(capacity: usize, mut init: F) -> State
+    impl Exchange {
+        pub fn with_capacity<F>(capacity: usize, mut init: F) -> Exchange
             where F: FnMut() -> Token
         {
             let capacity = if capacity < 2 || (capacity & (capacity - 1)) != 0 {
@@ -268,7 +266,7 @@ mod exchange {
                 })
                 .collect::<Vec<_>>();
 
-            State{
+            Exchange {
                 pad0: [0; 64],
                 buffer: buffer,
                 mask: capacity-1,
@@ -280,7 +278,7 @@ mod exchange {
             }
         }
 
-        fn push_exch(&self, instant: Instant, task: Task) -> Result<Token, Task> {
+        pub fn push_exch(&self, instant: Instant, task: Task) -> Result<Token, Task> {
             let mask = self.mask;
             let mut pos = self.enqueue_pos.load(Relaxed);
 
@@ -330,7 +328,7 @@ mod exchange {
             }
         }
 
-        fn pop_exch(&self, next_token: Token) -> Result<(Token, Instant, Task), Token> {
+        pub fn pop_exch(&self, next_token: Token) -> Result<(Token, Instant, Task), Token> {
             let mask = self.mask;
             let mut pos = self.dequeue_pos.load(Relaxed);
 
@@ -376,27 +374,6 @@ mod exchange {
         }
     }
 
-    impl Exchange {
-        pub fn with_capacity<F>(capacity: usize, init: F) -> Exchange
-            where F: FnMut() -> Token,
-        {
-            Exchange {
-                state: Arc::new(State::with_capacity(capacity, init))
-            }
-        }
-
-        pub fn push_exch(&self, instant: Instant, task: Task) -> Result<Token, Task> {
-            self.state.push_exch(instant, task)
-        }
-
-        pub fn pop_exch(&self, next_token: Token) -> Result<(Token, Instant, Task), Token> {
-            self.state.pop_exch(next_token)
-        }
-    }
-
-    impl Clone for Exchange {
-        fn clone(&self) -> Exchange {
-            Exchange { state: self.state.clone() }
-        }
-    }
+    unsafe impl Send for Exchange {}
+    unsafe impl Sync for Exchange {}
 }

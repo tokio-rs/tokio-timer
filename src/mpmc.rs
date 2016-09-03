@@ -31,21 +31,11 @@
 
 // This queue is copy pasted from old rust stdlib.
 
-use std::sync::Arc;
 use std::cell::UnsafeCell;
-
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
 
-struct Node<T> {
-    sequence: AtomicUsize,
-    value: Option<T>,
-}
-
-unsafe impl<T: Send> Send for Node<T> {}
-unsafe impl<T: Sync> Sync for Node<T> {}
-
-struct State<T> {
+pub struct Queue<T> {
     pad0: [u8; 64],
     buffer: Vec<UnsafeCell<Node<T>>>,
     mask: usize,
@@ -56,15 +46,13 @@ struct State<T> {
     pad3: [u8; 64],
 }
 
-unsafe impl<T: Send> Send for State<T> {}
-unsafe impl<T: Sync> Sync for State<T> {}
-
-pub struct Queue<T> {
-    state: Arc<State<T>>,
+struct Node<T> {
+    sequence: AtomicUsize,
+    value: Option<T>,
 }
 
-impl<T: Send> State<T> {
-    fn with_capacity(capacity: usize) -> State<T> {
+impl<T: Send> Queue<T> {
+    pub fn with_capacity(capacity: usize) -> Queue<T> {
         let capacity = if capacity < 2 || (capacity & (capacity - 1)) != 0 {
             if capacity < 2 {
                 2
@@ -78,7 +66,7 @@ impl<T: Send> State<T> {
         let buffer = (0..capacity).map(|i| {
             UnsafeCell::new(Node { sequence:AtomicUsize::new(i), value: None })
         }).collect::<Vec<_>>();
-        State{
+        Queue {
             pad0: [0; 64],
             buffer: buffer,
             mask: capacity-1,
@@ -90,7 +78,7 @@ impl<T: Send> State<T> {
         }
     }
 
-    fn push(&self, value: T) -> Result<(), T> {
+    pub fn push(&self, value: T) -> Result<(), T> {
         let mask = self.mask;
         let mut pos = self.enqueue_pos.load(Relaxed);
         loop {
@@ -118,7 +106,7 @@ impl<T: Send> State<T> {
         Ok(())
     }
 
-    fn pop(&self) -> Option<T> {
+    pub fn pop(&self) -> Option<T> {
         let mask = self.mask;
         let mut pos = self.dequeue_pos.load(Relaxed);
         loop {
@@ -145,80 +133,7 @@ impl<T: Send> State<T> {
     }
 }
 
-impl<T: Send> Queue<T> {
-    pub fn with_capacity(capacity: usize) -> Queue<T> {
-        Queue{
-            state: Arc::new(State::with_capacity(capacity))
-        }
-    }
-
-    pub fn push(&self, value: T) -> Result<(), T> {
-        self.state.push(value)
-    }
-
-    pub fn pop(&self) -> Option<T> {
-        self.state.pop()
-    }
-}
-
-impl<T: Send> Clone for Queue<T> {
-    fn clone(&self) -> Queue<T> {
-        Queue { state: self.state.clone() }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::thread;
-    use std::sync::mpsc::channel;
-    use super::Queue;
-
-    #[test]
-    fn test() {
-        let nthreads = 8;
-        let nmsgs = 1000;
-        let q = Queue::with_capacity(nthreads*nmsgs);
-        assert_eq!(None, q.pop());
-        let (tx, rx) = channel();
-
-        for _ in 0..nthreads {
-            let q = q.clone();
-            let tx = tx.clone();
-            thread::spawn(move || {
-                let q = q;
-                for i in 0..nmsgs {
-                    assert!(q.push(i).is_ok());
-                }
-                tx.send(()).unwrap();
-            });
-        }
-
-        let mut completion_rxs = vec![];
-        for _ in 0..nthreads {
-            let (tx, rx) = channel();
-            completion_rxs.push(rx);
-            let q = q.clone();
-            thread::spawn(move || {
-                let q = q;
-                let mut i = 0;
-                loop {
-                    match q.pop() {
-                        None => {},
-                        Some(_) => {
-                            i += 1;
-                            if i == nmsgs { break }
-                        }
-                    }
-                }
-                tx.send(i).unwrap();
-            });
-        }
-
-        for rx in completion_rxs.iter_mut() {
-            assert_eq!(nmsgs, rx.recv().unwrap());
-        }
-        for _ in 0..nthreads {
-            rx.recv().unwrap();
-        }
-    }
-}
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Sync> Sync for Queue<T> {}
+unsafe impl<T: Send> Send for Node<T> {}
+unsafe impl<T: Sync> Sync for Node<T> {}
