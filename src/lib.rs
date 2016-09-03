@@ -83,6 +83,8 @@
 //! `initial_capacity`, in which case timeout storage is allocated in chunks as
 //! needed. Timeout storage can grow but never shrink.
 
+#![deny(warnings, missing_docs)]
+
 extern crate futures;
 extern crate slab;
 
