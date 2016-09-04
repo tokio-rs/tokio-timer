@@ -13,7 +13,7 @@ use std::thread;
 fn test_immediate_timeout() {
     let timer = Timer::default();
 
-    let mut t = timer.set_timeout(Instant::now());
+    let mut t = timer.sleep(Duration::from_millis(0));
     assert_eq!(Async::Ready(()), t.poll().unwrap());
 }
 
@@ -24,7 +24,7 @@ fn test_delayed_timeout() {
 
     for _ in 0..20 {
         let elapsed = support::time(|| {
-            timer.set_timeout(Instant::now() + dur)
+            timer.sleep(dur)
                 .wait()
                 .unwrap();
         });
@@ -40,8 +40,8 @@ fn test_setting_later_timeout_then_earlier_one() {
     let dur1 = Duration::from_millis(500);
     let dur2 = Duration::from_millis(200);
 
-    let to1 = timer.set_timeout(Instant::now() + dur1);
-    let to2 = timer.set_timeout(Instant::now() + dur2);
+    let to1 = timer.sleep(dur1);
+    let to2 = timer.sleep(dur2);
 
     let t1 = thread::spawn(move || {
         support::time(|| to1.wait().unwrap())
@@ -65,8 +65,8 @@ fn test_timer_with_looping_wheel() {
     let dur1 = Duration::from_millis(200);
     let dur2 = Duration::from_millis(1000);
 
-    let to1 = timer.set_timeout(Instant::now() + dur1);
-    let to2 = timer.set_timeout(Instant::now() + dur2);
+    let to1 = timer.sleep(dur1);
+    let to2 = timer.sleep(dur2);
 
     let e1 = support::time(|| to1.wait().unwrap());
     let e2 = support::time(|| to2.wait().unwrap());
@@ -81,9 +81,9 @@ fn test_request_timeout_greater_than_max() {
         .max_timeout(Duration::from_millis(500))
         .build();
 
-    let to = timer.set_timeout(Instant::now() + Duration::from_millis(600));
+    let to = timer.sleep(Duration::from_millis(600));
     assert!(to.wait().is_err());
 
-    let to = timer.set_timeout(Instant::now() + Duration::from_millis(500));
+    let to = timer.sleep(Duration::from_millis(500));
     assert!(to.wait().is_ok());
 }

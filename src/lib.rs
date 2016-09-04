@@ -25,12 +25,12 @@
 //!     let timer = Timer::default();
 //!
 //!     // Set a timeout that expires in 500 milliseconds
-//!     let timeout = timer.set_timeout(Instant::now() + Duration::from_millis(500));
+//!     let sleep = timer.sleep(Duration::from_millis(500));
 //!
-//!     // Use the `Future::wait` to block the current thread until `Timeout`
+//!     // Use the `Future::wait` to block the current thread until `Sleep`
 //!     // future completes.
 //!     //
-//!     timeout.wait();
+//!     sleep.wait();
 //! }
 //! ```
 //!
@@ -96,7 +96,7 @@ mod timer;
 mod wheel;
 mod worker;
 
-pub use timer::{Timer, Timeout};
+pub use timer::{Timer, Sleep};
 use std::cmp;
 use std::time::Duration;
 

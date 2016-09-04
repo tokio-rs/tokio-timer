@@ -4,7 +4,8 @@ use wheel::{Token, Wheel};
 use futures::{Future, Async, Poll};
 use futures::task::{self, Task};
 use std::fmt;
-use std::time::Instant;
+use std::error::Error;
+use std::time::{Duration, Instant};
 
 /// A facility for scheduling timeouts
 #[derive(Clone)]
@@ -12,20 +13,20 @@ pub struct Timer {
     worker: Worker,
 }
 
+/// A `Future` that does nothing and completes after the requested duration
+pub struct Sleep {
+    worker: Worker,
+    when: Instant,
+    handle: Option<(Task, Token)>,
+}
+
 /// The error type for timeout operations.
 #[derive(Debug, Clone)]
-pub enum Error {
+pub enum TimerError {
     /// The requested timeout exceeds the timer's `max_timeout` setting.
     TooLong,
     /// The timer has reached capacity and cannot support new timeouts.
     NoCapacity,
-}
-
-/// A `Future` that completes at the requested instance
-pub struct Timeout {
-    worker: Worker,
-    when: Instant,
-    handle: Option<(Task, Token)>,
 }
 
 pub fn build(builder: Builder) -> Timer {
@@ -37,10 +38,10 @@ pub fn build(builder: Builder) -> Timer {
 
 impl Timer {
     /// Returns a future that completes once the given instant has been reached
-    pub fn set_timeout(&self, when: Instant) -> Timeout {
-        Timeout {
+    pub fn sleep(&self, duration: Duration) -> Sleep {
+        Sleep {
             worker: self.worker.clone(),
-            when: when,
+            when: Instant::now() + duration,
             handle: None,
         }
     }
@@ -54,17 +55,16 @@ impl Default for Timer {
 
 /*
  *
- * ===== Timeout =====
+ * ===== Sleep =====
  *
  */
 
-impl Timeout {
-    /// Returns true if the `Timeout` is expired.
+impl Sleep {
+    /// Returns true if the `Sleep` is expired.
     ///
-    /// A timeout is expired when the current instant is past the instant
-    /// specified when requesting the timeout. In practice, the timeout can
-    /// expire slightly before the requested instant as the timer is not
-    /// precise.
+    /// A `Sleep` is expired when the requested duration has elapsed. In
+    /// practice, the `Sleep` can expire slightly before the requested duration
+    /// as the timer is not precise.
     ///
     /// See the crate docs for more detail.
     pub fn is_expired(&self) -> bool {
@@ -72,29 +72,29 @@ impl Timeout {
     }
 }
 
-impl Future for Timeout {
+impl Future for Sleep {
     type Item = ();
-    type Error = Error;
+    type Error = TimerError;
 
-    fn poll(&mut self) -> Poll<(), Error> {
-        trace!("Timeout::poll; when={:?}", self.when);
+    fn poll(&mut self) -> Poll<(), TimerError> {
+        trace!("Sleep::poll; when={:?}", self.when);
 
         if self.is_expired() {
             trace!("  --> expired; returning");
             return Ok(Async::Ready(()));
         }
 
-        // The timeout has not expired, so perform any necessary operations
+        // The `Sleep` has not expired, so perform any necessary operations
         // with the timer worker in order to get notified after the requested
         // instant.
 
         let handle = match self.handle {
             None => {
                 // An wakeup request has not yet been sent to the timer. Before
-                // doing so, check to ensure that the requested timeout does
+                // doing so, check to ensure that the requested duration does
                 // not exceed the `max_timeout` duration
                 if (self.when - Instant::now()) > *self.worker.max_timeout() {
-                    return Err(Error::TooLong);
+                    return Err(TimerError::TooLong);
                 }
 
                 trace!("  --> no handle; parking");
@@ -149,7 +149,7 @@ impl Future for Timeout {
     }
 }
 
-impl Drop for Timeout {
+impl Drop for Sleep {
     fn drop(&mut self) {
         if let Some((_, token)) = self.handle {
             self.worker.cancel_timeout(token, self.when);
@@ -157,17 +157,17 @@ impl Drop for Timeout {
     }
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for TimerError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{}", ::std::error::Error::description(self))
+        write!(fmt, "{}", Error::description(self))
     }
 }
 
-impl ::std::error::Error for Error {
+impl Error for TimerError {
     fn description(&self) -> &str {
         match *self {
-            Error::TooLong => "requested timeout too long",
-            Error::NoCapacity => "timer out of capacity",
+            TimerError::TooLong => "requested timeout too long",
+            TimerError::NoCapacity => "timer out of capacity",
         }
     }
 }
