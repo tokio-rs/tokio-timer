@@ -96,7 +96,8 @@ mod timer;
 mod wheel;
 mod worker;
 
-pub use timer::{Timer, Sleep};
+pub use timer::{Sleep, Timer, Timeout, TimerError, TimeoutError};
+
 use std::cmp;
 use std::time::Duration;
 
