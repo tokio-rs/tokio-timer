@@ -6,11 +6,12 @@ mod support;
 
 use futures::*;
 use timer::*;
+use std::io;
 use std::time::*;
 use std::thread;
 
 #[test]
-fn test_immediate_timeout() {
+fn test_immediate_sleep() {
     let timer = Timer::default();
 
     let mut t = timer.sleep(Duration::from_millis(0));
@@ -18,7 +19,7 @@ fn test_immediate_timeout() {
 }
 
 #[test]
-fn test_delayed_timeout() {
+fn test_delayed_sleep() {
     let timer = Timer::default();
     let dur = Duration::from_millis(200);
 
@@ -34,7 +35,7 @@ fn test_delayed_timeout() {
 }
 
 #[test]
-fn test_setting_later_timeout_then_earlier_one() {
+fn test_setting_later_sleep_then_earlier_one() {
     let timer = Timer::default();
 
     let dur1 = Duration::from_millis(500);
@@ -76,7 +77,7 @@ fn test_timer_with_looping_wheel() {
 }
 
 #[test]
-fn test_request_timeout_greater_than_max() {
+fn test_request_sleep_greater_than_max() {
     let timer = timer::wheel()
         .max_timeout(Duration::from_millis(500))
         .build();
@@ -86,4 +87,78 @@ fn test_request_timeout_greater_than_max() {
 
     let to = timer.sleep(Duration::from_millis(500));
     assert!(to.wait().is_ok());
+}
+
+#[test]
+fn test_timeout_with_future_completes_first() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+
+    let (tx, rx) = oneshot();
+    let rx = rx.then(|res| {
+        match res {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            _ => panic!("invalid"),
+        }
+    });
+
+    let to = timer.timeout(rx, dur);
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        tx.complete(Ok::<&'static str, io::Error>("done"));
+    });
+
+    assert_eq!("done", to.wait().unwrap());
+}
+
+#[test]
+fn test_timeout_with_timeout_completes_first() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+
+    let (tx, rx) = oneshot();
+    let rx = rx.then(|res| {
+        match res {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            _ => panic!("invalid"),
+        }
+    });
+
+    let to = timer.timeout(rx, dur);
+
+    let err: io::Error = to.wait().unwrap_err();
+    assert_eq!(io::ErrorKind::TimedOut, err.kind());
+
+    // Mostly to make the type inferencer happy
+    tx.complete(Ok::<&'static str, io::Error>("done"));
+}
+
+#[test]
+fn test_timeout_with_future_errors_first() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+
+    let (tx, rx) = oneshot();
+    let rx = rx.then(|res| {
+        match res {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            _ => panic!("invalid"),
+        }
+    });
+
+    let to = timer.timeout(rx, dur);
+    let err = io::Error::new(io::ErrorKind::NotFound, "not found");
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        tx.complete(Err::<&'static str, io::Error>(err));
+    });
+
+    let err = to.wait().unwrap_err();
+
+    assert_eq!(io::ErrorKind::NotFound, err.kind());
 }

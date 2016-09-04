@@ -3,7 +3,7 @@ use worker::Worker;
 use wheel::{Token, Wheel};
 use futures::{Future, Async, Poll};
 use futures::task::{self, Task};
-use std::fmt;
+use std::{fmt, io};
 use std::error::Error;
 use std::time::{Duration, Instant};
 
@@ -20,13 +20,28 @@ pub struct Sleep {
     handle: Option<(Task, Token)>,
 }
 
-/// The error type for timeout operations.
+/// Allows a given `Future` to execute for a max duration
+pub struct Timeout<T> {
+    future: T,
+    sleep: Sleep,
+}
+
+/// The error type for timer operations.
 #[derive(Debug, Clone)]
 pub enum TimerError {
     /// The requested timeout exceeds the timer's `max_timeout` setting.
     TooLong,
     /// The timer has reached capacity and cannot support new timeouts.
     NoCapacity,
+}
+
+/// The error type for timeout operations.
+#[derive(Debug, Clone)]
+pub enum TimeoutError {
+    /// An error caused by the timer
+    Timer(TimerError),
+    /// The operation timed out
+    TimedOut,
 }
 
 pub fn build(builder: Builder) -> Timer {
@@ -36,6 +51,12 @@ pub fn build(builder: Builder) -> Timer {
     Timer { worker: worker }
 }
 
+/*
+ *
+ * ===== Timer =====
+ *
+ */
+
 impl Timer {
     /// Returns a future that completes once the given instant has been reached
     pub fn sleep(&self, duration: Duration) -> Sleep {
@@ -43,6 +64,21 @@ impl Timer {
             worker: self.worker.clone(),
             when: Instant::now() + duration,
             handle: None,
+        }
+    }
+
+    /// Allow the given future to execute for at much `duration` time.
+    ///
+    /// If the given future completes within the given time, then the `Timeout`
+    /// future will complete with that result. If `duration` expires, the
+    /// `Timeout` future completes with a `TimeoutError`.
+    pub fn timeout<F, E>(&self, future: F, duration: Duration) -> Timeout<F>
+        where F: Future<Error = E>,
+              E: From<TimeoutError>,
+    {
+        Timeout {
+            future: future,
+            sleep: self.sleep(duration),
         }
     }
 }
@@ -157,6 +193,39 @@ impl Drop for Sleep {
     }
 }
 
+/*
+ *
+ * ===== Timeout ====
+ *
+ */
+
+impl<F, E> Future for Timeout<F>
+    where F: Future<Error = E>,
+          E: From<TimeoutError>,
+{
+    type Item = F::Item;
+    type Error = E;
+
+    fn poll(&mut self) -> Poll<F::Item, E> {
+        match self.future.poll() {
+            Ok(Async::NotReady) => {},
+            v => return v,
+        }
+
+        match self.sleep.poll() {
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Ok(Async::Ready(_)) => Err(TimeoutError::TimedOut.into()),
+            Err(e) => Err(TimeoutError::Timer(e).into()),
+        }
+    }
+}
+
+/*
+ *
+ * ===== Errors =====
+ *
+ */
+
 impl fmt::Display for TimerError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", Error::description(self))
@@ -168,6 +237,38 @@ impl Error for TimerError {
         match *self {
             TimerError::TooLong => "requested timeout too long",
             TimerError::NoCapacity => "timer out of capacity",
+        }
+    }
+}
+
+impl fmt::Display for TimeoutError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", Error::description(self))
+    }
+}
+
+impl Error for TimeoutError {
+    fn description(&self) -> &str {
+        use self::TimerError::*;
+        use self::TimeoutError::*;
+
+        match *self {
+            Timer(TooLong) => "requested timeout too long",
+            Timer(NoCapacity) => "timer out of capacity",
+            TimedOut => "the future timed out",
+        }
+    }
+}
+
+impl From<TimeoutError> for io::Error {
+    fn from(src: TimeoutError) -> io::Error {
+        use self::TimerError::*;
+        use self::TimeoutError::*;
+
+        match src {
+            Timer(TooLong) => io::Error::new(io::ErrorKind::InvalidInput, "requested timeout too long"),
+            Timer(NoCapacity) => io::Error::new(io::ErrorKind::Other, "timer out of capacity"),
+            TimedOut => io::Error::new(io::ErrorKind::TimedOut, "the future timed out"),
         }
     }
 }
