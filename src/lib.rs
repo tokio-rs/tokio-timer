@@ -67,7 +67,7 @@
 //! the same bucket.
 //!
 //! The best way to avoid collisions is to ensure that no timeout is set that
-//! is for greater than `num-slots * dick-duration` into the future.
+//! is for greater than `num-slots * tick-duration` into the future.
 //!
 //! A timer can be configured with `Builder`.
 //!
