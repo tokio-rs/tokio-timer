@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Carl Lerche <me@carllerche.com>"]
 
 [dependencies]
-futures = { git = "https://github.com/alexcrichton/futures-rs" }
+futures = "0.1"
 slab = "0.3.0"
 log = "0.3.6"
 
