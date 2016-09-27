@@ -106,6 +106,17 @@ impl Sleep {
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.when - *self.worker.tolerance()
     }
+
+    /// Returns the duration remaining
+    pub fn remaining(&self) -> Duration {
+        let now = Instant::now();
+
+        if now >= self.when {
+            Duration::from_millis(0)
+        } else {
+            self.when - now
+        }
+    }
 }
 
 impl Future for Sleep {
