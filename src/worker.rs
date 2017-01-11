@@ -167,7 +167,9 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
         let now = Instant::now();
 
         if let Some(next) = wheel.next_timeout() {
-            thread::park_timeout(next - now);
+            if next > now {
+                thread::park_timeout(next - now);
+            }
         } else {
             thread::park();
         }
