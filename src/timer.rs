@@ -22,7 +22,7 @@ pub struct Sleep {
 
 /// Allows a given `Future` to execute for a max duration
 pub struct Timeout<T> {
-    future: T,
+    future: Option<T>,
     sleep: Sleep,
 }
 
@@ -36,12 +36,12 @@ pub enum TimerError {
 }
 
 /// The error type for timeout operations.
-#[derive(Debug, Clone)]
-pub enum TimeoutError {
+#[derive(Clone)]
+pub enum TimeoutError<T> {
     /// An error caused by the timer
-    Timer(TimerError),
+    Timer(T, TimerError),
     /// The operation timed out
-    TimedOut,
+    TimedOut(T),
 }
 
 pub fn build(builder: Builder) -> Timer {
@@ -74,10 +74,10 @@ impl Timer {
     /// `Timeout` future completes with a `TimeoutError`.
     pub fn timeout<F, E>(&self, future: F, duration: Duration) -> Timeout<F>
         where F: Future<Error = E>,
-              E: From<TimeoutError>,
+              E: From<TimeoutError<F>>,
     {
         Timeout {
-            future: future,
+            future: Some(future),
             sleep: self.sleep(duration),
         }
     }
@@ -212,21 +212,36 @@ impl Drop for Sleep {
 
 impl<F, E> Future for Timeout<F>
     where F: Future<Error = E>,
-          E: From<TimeoutError>,
+          E: From<TimeoutError<F>>,
 {
     type Item = F::Item;
     type Error = E;
 
     fn poll(&mut self) -> Poll<F::Item, E> {
-        match self.future.poll() {
-            Ok(Async::NotReady) => {},
-            v => return v,
+        // First, try polling the future
+        match self.future {
+            Some(ref mut f) => {
+                match f.poll() {
+                    Ok(Async::NotReady) => {}
+                    v => return v,
+                }
+            }
+            None => panic!("cannot call poll once value is consumed"),
         }
 
+        // Now check the timer
         match self.sleep.poll() {
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Ok(Async::Ready(_)) => Err(TimeoutError::TimedOut.into()),
-            Err(e) => Err(TimeoutError::Timer(e).into()),
+            Ok(Async::Ready(_)) => {
+                // Timeout has elapsed, error the future
+                let f = self.future.take().unwrap();
+                Err(TimeoutError::TimedOut(f).into())
+            }
+            Err(e) => {
+                // Something went wrong with the underlying timeout
+                let f = self.future.take().unwrap();
+                Err(TimeoutError::Timer(f, e).into())
+            }
         }
     }
 }
@@ -252,34 +267,40 @@ impl Error for TimerError {
     }
 }
 
-impl fmt::Display for TimeoutError {
+impl<T> fmt::Display for TimeoutError<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", Error::description(self))
     }
 }
 
-impl Error for TimeoutError {
+impl<T> fmt::Debug for TimeoutError<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", Error::description(self))
+    }
+}
+
+impl<T> Error for TimeoutError<T> {
     fn description(&self) -> &str {
         use self::TimerError::*;
         use self::TimeoutError::*;
 
         match *self {
-            Timer(TooLong) => "requested timeout too long",
-            Timer(NoCapacity) => "timer out of capacity",
-            TimedOut => "the future timed out",
+            Timer(_, TooLong) => "requested timeout too long",
+            Timer(_, NoCapacity) => "timer out of capacity",
+            TimedOut(_) => "the future timed out",
         }
     }
 }
 
-impl From<TimeoutError> for io::Error {
-    fn from(src: TimeoutError) -> io::Error {
+impl<T> From<TimeoutError<T>> for io::Error {
+    fn from(src: TimeoutError<T>) -> io::Error {
         use self::TimerError::*;
         use self::TimeoutError::*;
 
         match src {
-            Timer(TooLong) => io::Error::new(io::ErrorKind::InvalidInput, "requested timeout too long"),
-            Timer(NoCapacity) => io::Error::new(io::ErrorKind::Other, "timer out of capacity"),
-            TimedOut => io::Error::new(io::ErrorKind::TimedOut, "the future timed out"),
+            Timer(_, TooLong) => io::Error::new(io::ErrorKind::InvalidInput, "requested timeout too long"),
+            Timer(_, NoCapacity) => io::Error::new(io::ErrorKind::Other, "timer out of capacity"),
+            TimedOut(_) => io::Error::new(io::ErrorKind::TimedOut, "the future timed out"),
         }
     }
 }
@@ -295,7 +316,7 @@ impl From<TimerError> for () {
     }
 }
 
-impl From<TimeoutError> for () {
-    fn from(_: TimeoutError) -> () {
+impl<T> From<TimeoutError<T>> for () {
+    fn from(_: TimeoutError<T>) -> () {
     }
 }
