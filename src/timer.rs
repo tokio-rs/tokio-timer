@@ -1,8 +1,10 @@
 use {Builder, wheel};
 use worker::Worker;
 use wheel::{Token, Wheel};
-use futures::{Future, Async, Poll};
+
+use futures::{Future, Stream, Async, Poll};
 use futures::task::{self, Task};
+
 use std::{fmt, io};
 use std::error::Error;
 use std::time::{Duration, Instant};
@@ -25,6 +27,13 @@ pub struct Sleep {
 #[must_use = "futures do nothing unless polled"]
 pub struct Timeout<T> {
     future: Option<T>,
+    sleep: Sleep,
+}
+
+/// Allows a given `Stream` to take a max duration to yield the next value.
+pub struct TimeoutStream<T> {
+    stream: Option<T>,
+    duration: Duration,
     sleep: Sleep,
 }
 
@@ -62,14 +71,10 @@ pub fn build(builder: Builder) -> Timer {
 impl Timer {
     /// Returns a future that completes once the given instant has been reached
     pub fn sleep(&self, duration: Duration) -> Sleep {
-        Sleep {
-            worker: self.worker.clone(),
-            when: Instant::now() + duration,
-            handle: None,
-        }
+        Sleep::new(self.worker.clone(), duration)
     }
 
-    /// Allow the given future to execute for at much `duration` time.
+    /// Allow the given future to execute for at most `duration` time.
     ///
     /// If the given future completes within the given time, then the `Timeout`
     /// future will complete with that result. If `duration` expires, the
@@ -80,6 +85,23 @@ impl Timer {
     {
         Timeout {
             future: Some(future),
+            sleep: self.sleep(duration),
+        }
+    }
+
+    /// Allow the given stream to execute for at most `duration` time per
+    /// yielded value.
+    ///
+    /// If the given stream yields a value within the allocated duration, then
+    /// value is returned and the timeout is reset for the next value. If the
+    /// `duration` expires, then the stream will error with a `TimeoutError`.
+    pub fn timeout_stream<T, E>(&self, stream: T, duration: Duration) -> TimeoutStream<T>
+        where T: Stream<Error = E>,
+              E: From<TimeoutError<T>>,
+    {
+        TimeoutStream {
+            stream: Some(stream),
+            duration: duration,
             sleep: self.sleep(duration),
         }
     }
@@ -98,6 +120,15 @@ impl Default for Timer {
  */
 
 impl Sleep {
+    /// Create a new `Sleep`
+    fn new(worker: Worker, duration: Duration) -> Sleep {
+        Sleep {
+            worker: worker,
+            when: Instant::now() + duration,
+            handle: None,
+        }
+    }
+
     /// Returns true if the `Sleep` is expired.
     ///
     /// A `Sleep` is expired when the requested duration has elapsed. In
@@ -243,6 +274,55 @@ impl<F, E> Future for Timeout<F>
                 // Something went wrong with the underlying timeout
                 let f = self.future.take().unwrap();
                 Err(TimeoutError::Timer(f, e).into())
+            }
+        }
+    }
+}
+
+/*
+ *
+ * ===== TimeoutStream ====
+ *
+ */
+
+impl<T, E> Stream for TimeoutStream<T>
+    where T: Stream<Error = E>,
+          E: From<TimeoutError<T>>,
+{
+    type Item = T::Item;
+    type Error = E;
+
+    fn poll(&mut self) -> Poll<Option<T::Item>, E> {
+        // First, try polling the future
+        match self.stream {
+            Some(ref mut s) => {
+                match s.poll() {
+                    Ok(Async::NotReady) => {}
+                    Ok(Async::Ready(Some(v))) => {
+                        // Reset the timeout
+                        self.sleep = Sleep::new(self.sleep.worker.clone(), self.duration);
+
+                        // Return the value
+                        return Ok(Async::Ready(Some(v)));
+                    }
+                    v => return v,
+                }
+            }
+            None => panic!("cannot call poll once value is consumed"),
+        }
+
+        // Now check the timer
+        match self.sleep.poll() {
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Ok(Async::Ready(_)) => {
+                // Timeout has elapsed, error the future
+                let s = self.stream.take().unwrap();
+                Err(TimeoutError::TimedOut(s).into())
+            }
+            Err(e) => {
+                // Something went wrong with the underlying timeout
+                let s = self.stream.take().unwrap();
+                Err(TimeoutError::Timer(s, e).into())
             }
         }
     }

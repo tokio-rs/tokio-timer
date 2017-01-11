@@ -4,7 +4,9 @@ extern crate env_logger;
 
 mod support;
 
-use futures::*;
+// use futures::*;
+use futures::{Future, Stream, Sink, Async};
+use futures::sync::{oneshot, mpsc};
 use timer::*;
 use std::io;
 use std::time::*;
@@ -94,7 +96,7 @@ fn test_timeout_with_future_completes_first() {
     let timer = Timer::default();
     let dur = Duration::from_millis(300);
 
-    let (tx, rx) = oneshot();
+    let (tx, rx) = oneshot::channel();
     let rx = rx.then(|res| {
         match res {
             Ok(Ok(v)) => Ok(v),
@@ -118,7 +120,7 @@ fn test_timeout_with_timeout_completes_first() {
     let timer = Timer::default();
     let dur = Duration::from_millis(300);
 
-    let (tx, rx) = oneshot();
+    let (tx, rx) = oneshot::channel();
     let rx = rx.then(|res| {
         match res {
             Ok(Ok(v)) => Ok(v),
@@ -141,7 +143,7 @@ fn test_timeout_with_future_errors_first() {
     let timer = Timer::default();
     let dur = Duration::from_millis(300);
 
-    let (tx, rx) = oneshot();
+    let (tx, rx) = oneshot::channel();
     let rx = rx.then(|res| {
         match res {
             Ok(Ok(v)) => Ok(v),
@@ -161,4 +163,72 @@ fn test_timeout_with_future_errors_first() {
     let err = to.wait().unwrap_err();
 
     assert_eq!(io::ErrorKind::NotFound, err.kind());
+}
+
+#[test]
+fn test_timeout_stream_with_stream_completes_first() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+
+    let (tx, rx) = mpsc::unbounded();
+    let rx = rx.then(|res| {
+        match res {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            _ => panic!("invalid"),
+        }
+    });
+
+    let to = timer.timeout_stream(rx, dur);
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        let tx = tx.send(Ok::<&'static str, io::Error>("one")).wait().unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+        tx.send(Ok::<&'static str, io::Error>("two")).wait().unwrap();
+    });
+
+    let mut s = to.wait();
+
+    assert_eq!("one", s.next().unwrap().unwrap());
+    assert_eq!("two", s.next().unwrap().unwrap());
+    assert!(s.next().is_none());
+}
+
+#[test]
+fn test_timeout_stream_with_timeout_completes_first() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+
+    let (tx, rx) = mpsc::unbounded();
+    let rx = rx.then(|res| {
+        match res {
+            Ok(Ok(v)) => Ok(v),
+            Ok(Err(e)) => Err(e),
+            _ => panic!("invalid"),
+        }
+    });
+
+    let to = timer.timeout_stream(rx, dur);
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        let tx = tx.send(Ok::<&'static str, io::Error>("one")).wait().unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+        let tx = tx.send(Ok::<&'static str, io::Error>("two")).wait().unwrap();
+
+        thread::sleep(Duration::from_millis(600));
+
+        drop(tx);
+    });
+
+    let mut s = to.wait();
+
+    assert_eq!("one", s.next().unwrap().unwrap());
+    assert_eq!("two", s.next().unwrap().unwrap());
+
+    let err = s.next().unwrap().unwrap_err();
+    assert_eq!(io::ErrorKind::TimedOut, err.kind());
 }
