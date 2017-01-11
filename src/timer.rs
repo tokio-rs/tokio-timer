@@ -14,6 +14,7 @@ pub struct Timer {
 }
 
 /// A `Future` that does nothing and completes after the requested duration
+#[must_use = "futures do nothing unless polled"]
 pub struct Sleep {
     worker: Worker,
     when: Instant,
@@ -21,6 +22,7 @@ pub struct Sleep {
 }
 
 /// Allows a given `Future` to execute for a max duration
+#[must_use = "futures do nothing unless polled"]
 pub struct Timeout<T> {
     future: Option<T>,
     sleep: Sleep,
