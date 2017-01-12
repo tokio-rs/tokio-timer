@@ -3,8 +3,9 @@
 Timer facilities for Tokio
 
 [![Build Status](https://travis-ci.org/tokio-rs/tokio-timer.svg?branch=master)](https://travis-ci.org/tokio-rs/tokio-timer)
+[![Crates.io](https://img.shields.io/crates/v/tokio-timer.svg?maxAge=2592000)](https://crates.io/crates/tokio-timer)
 
-[Documentation](https://tokio-rs.github.io/tokio-timer) |
+[Documentation](https://docs.rs/tokio-timer) |
 [Gitter](https://gitter.im/tokio-rs/tokio)
 
 ## Usage
