@@ -1,4 +1,4 @@
-use {Builder, wheel};
+use {interval, Interval, Builder, wheel};
 use worker::Worker;
 use wheel::{Token, Wheel};
 
@@ -18,7 +18,7 @@ pub struct Timer {
 /// A `Future` that does nothing and completes after the requested duration
 #[must_use = "futures do nothing unless polled"]
 pub struct Sleep {
-    worker: Worker,
+    timer: Timer,
     when: Instant,
     handle: Option<(Task, Token)>,
 }
@@ -71,7 +71,7 @@ pub fn build(builder: Builder) -> Timer {
 impl Timer {
     /// Returns a future that completes once the given instant has been reached
     pub fn sleep(&self, duration: Duration) -> Sleep {
-        Sleep::new(self.worker.clone(), duration)
+        Sleep::new(self.clone(), duration)
     }
 
     /// Allow the given future to execute for at most `duration` time.
@@ -105,6 +105,26 @@ impl Timer {
             sleep: self.sleep(duration),
         }
     }
+
+    /// Creates a new interval which will fire at `dur` time into the future,
+    /// and will repeat every `dur` interval after
+    pub fn interval(&self, dur: Duration) -> Interval {
+        interval::new(self.sleep(dur), dur)
+    }
+
+    /// Creates a new interval which will fire at the time specified by `at`,
+    /// and then will repeat every `dur` interval after
+    pub fn interval_at(&self, at: Instant, dur: Duration) -> Interval {
+        let now = Instant::now();
+
+        let sleep = if at > now {
+            self.sleep(at - now)
+        } else {
+            self.sleep(dur)
+        };
+
+        interval::new(sleep, dur)
+    }
 }
 
 impl Default for Timer {
@@ -121,9 +141,9 @@ impl Default for Timer {
 
 impl Sleep {
     /// Create a new `Sleep`
-    fn new(worker: Worker, duration: Duration) -> Sleep {
+    fn new(timer: Timer, duration: Duration) -> Sleep {
         Sleep {
-            worker: worker,
+            timer: timer,
             when: Instant::now() + duration,
             handle: None,
         }
@@ -137,7 +157,7 @@ impl Sleep {
     ///
     /// See the crate docs for more detail.
     pub fn is_expired(&self) -> bool {
-        Instant::now() >= self.when - *self.worker.tolerance()
+        Instant::now() >= self.when - *self.timer.worker.tolerance()
     }
 
     /// Returns the duration remaining
@@ -150,6 +170,11 @@ impl Sleep {
             self.when - now
         }
     }
+
+    /// Returns a ref to the timer backing this `Sleep`
+    pub fn timer(&self) -> &Timer {
+        &self.timer
+    }
 }
 
 impl Future for Sleep {
@@ -157,10 +182,7 @@ impl Future for Sleep {
     type Error = TimerError;
 
     fn poll(&mut self) -> Poll<(), TimerError> {
-        trace!("Sleep::poll; when={:?}", self.when);
-
         if self.is_expired() {
-            trace!("  --> expired; returning");
             return Ok(Async::Ready(()));
         }
 
@@ -173,18 +195,15 @@ impl Future for Sleep {
                 // An wakeup request has not yet been sent to the timer. Before
                 // doing so, check to ensure that the requested duration does
                 // not exceed the `max_timeout` duration
-                if (self.when - Instant::now()) > *self.worker.max_timeout() {
+                if (self.when - Instant::now()) > *self.timer.worker.max_timeout() {
                     return Err(TimerError::TooLong);
                 }
-
-                trace!("  --> no handle; parking");
 
                 // Get the current task handle
                 let task = task::park();
 
-                match self.worker.set_timeout(self.when, task.clone()) {
+                match self.timer.worker.set_timeout(self.when, task.clone()) {
                     Ok(token) => {
-                        trace!("  --> timeout set; token={:?}", token);
                         (task, token)
                     }
                     Err(task) => {
@@ -196,20 +215,16 @@ impl Future for Sleep {
             }
             Some((ref task, token)) => {
                 if task.is_current() {
-                    trace!("  --> handle current -- NotReady; token={:?}; now={:?}", token, Instant::now());
-
                     // Nothing more to do, the notify on timeout has already
                     // been registered
                     return Ok(Async::NotReady);
                 }
 
-                trace!("  --> timeout moved -- notifying timer; when={:?}", self.when);
-
                 let task = task::park();
 
                 // The timeout has been moved to another task, in this case the
                 // timer has to be notified
-                match self.worker.move_timeout(token, self.when, task.clone()) {
+                match self.timer.worker.move_timeout(token, self.when, task.clone()) {
                     Ok(_) => (task, token),
                     Err(task) => {
                         // Overloaded timer, yield hte current task
@@ -219,8 +234,6 @@ impl Future for Sleep {
                 }
             }
         };
-
-        trace!("  --> tracking handle");
 
         // Moved out here to make the borrow checker happy
         self.handle = Some(handle);
@@ -232,7 +245,7 @@ impl Future for Sleep {
 impl Drop for Sleep {
     fn drop(&mut self) {
         if let Some((_, token)) = self.handle {
-            self.worker.cancel_timeout(token, self.when);
+            self.timer.worker.cancel_timeout(token, self.when);
         }
     }
 }
@@ -300,7 +313,7 @@ impl<T, E> Stream for TimeoutStream<T>
                     Ok(Async::NotReady) => {}
                     Ok(Async::Ready(Some(v))) => {
                         // Reset the timeout
-                        self.sleep = Sleep::new(self.sleep.worker.clone(), self.duration);
+                        self.sleep = Sleep::new(self.sleep.timer.clone(), self.duration);
 
                         // Return the value
                         return Ok(Async::Ready(Some(v)));

@@ -1,6 +1,5 @@
 extern crate futures;
 extern crate tokio_timer as timer;
-extern crate env_logger;
 
 mod support;
 
@@ -231,4 +230,31 @@ fn test_timeout_stream_with_timeout_completes_first() {
 
     let err = s.next().unwrap().unwrap_err();
     assert_eq!(io::ErrorKind::TimedOut, err.kind());
+}
+
+#[test]
+fn test_interval_once() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+    let mut interval = timer.interval(dur).wait();
+
+    let e1 = support::time(|| {
+        interval.next();
+    });
+
+    e1.assert_is_about(dur);
+}
+
+#[test]
+fn test_interval_twice() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+    let mut interval = timer.interval(dur).wait();
+
+    let e1 = support::time(|| {
+        interval.next();
+        interval.next();
+    });
+
+    e1.assert_is_about(dur * 2);
 }

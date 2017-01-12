@@ -126,11 +126,8 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
     while chan.run.load(Ordering::Relaxed) {
         let now = Instant::now();
 
-        trace!("Worker tick; now={:?}", now);
-
         // Fire off all expired timeouts
         while let Some(task) = wheel.poll(now) {
-            trace!("  --> unparking task");
             task.unpark();
         }
 
@@ -139,7 +136,6 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
         while let Some(token) = wheel.reserve() {
             match chan.set_timeouts.pop(token) {
                 Ok((SetTimeout(when, task), token)) => {
-                    trace!("  --> SetTimeout; token={:?}; instant={:?}", token, when);
                     wheel.set_timeout(token, when, task);
                 }
                 Err(token) => {
@@ -152,11 +148,9 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
         loop {
             match chan.mod_timeouts.pop(()) {
                 Ok((ModTimeout::Move(token, when, task), _)) => {
-                    trace!("  --> ModTimeout::Move; token={:?}; instant={:?}", token, when);
                     wheel.move_timeout(token, when, task);
                 }
                 Ok((ModTimeout::Cancel(token, when), _)) => {
-                    trace!("  --> ModTimeout::Cancel; token={:?}; instant={:?}", token, when);
                     wheel.cancel(token, when);
                 }
                 Err(_) => break,
@@ -174,8 +168,6 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
             thread::park();
         }
     }
-
-    trace!("shutting down timer");
 }
 
 impl Drop for Tx {

@@ -131,18 +131,14 @@ impl Wheel {
         let mut tick = self.time_to_ticks(at);
 
         if tick <= self.cur_wheel_tick {
-            debug!("moving {} to {}", tick, self.cur_wheel_tick + 1);
             tick = self.cur_wheel_tick + 1;
         }
 
         let wheel_idx = self.ticks_to_wheel_idx(tick);
-        trace!("inserting timeout at {} for {}", wheel_idx, tick);
 
         let actual_tick = self.start +
                           Duration::from_millis(self.tick_ms) * (tick as u32);
 
-        trace!("actual_tick: {:?}", actual_tick);
-        trace!("at:          {:?}", at);
         at = actual_tick;
 
         // Insert ourselves at the head of the linked list in the wheel.
@@ -151,8 +147,6 @@ impl Wheel {
         let prev_head = mem::replace(&mut slot.head, token);
 
         {
-            trace!("timer wheel slab idx: {:?}", token);
-
             self.slab[token] = Entry::Timeout(Timeout {
                 task: task,
                 when: at,
@@ -171,8 +165,6 @@ impl Wheel {
 
         // Update the wheel slot's next timeout field.
         if at <= slot.next_timeout.unwrap_or(at) {
-            debug!("updating[{}] next timeout: {:?}", wheel_idx, at);
-            debug!("                    start: {:?}", self.start);
             slot.next_timeout = Some(at);
         }
     }
@@ -191,16 +183,12 @@ impl Wheel {
     pub fn poll(&mut self, at: Instant) -> Option<Task> {
         let wheel_tick = self.time_to_ticks(at);
 
-        trace!("polling {} => {}", self.cur_wheel_tick, wheel_tick);
-
         // Advance forward in time to the `wheel_tick` specified.
         //
         // TODO: don't visit slots in the wheel more than once
         while self.cur_wheel_tick <= wheel_tick {
             let head = self.cur_slab_idx;
             let idx = self.ticks_to_wheel_idx(self.cur_wheel_tick);
-            trace!("next head[{} => {}]: {:?}",
-                   self.cur_wheel_tick, wheel_tick, head);
 
             // If the current slot has no entries or we're done iterating go to
             // the next tick.
@@ -263,12 +251,7 @@ impl Wheel {
             }
             min = Some(a);
         }
-        if let Some(min) = min {
-            debug!("next timeout {:?}", min);
-            debug!("now          {:?}", Instant::now());
-        } else {
-            debug!("next timeout never");
-        }
+
         min.map(|t| *t)
     }
 
@@ -302,7 +285,6 @@ impl Wheel {
     }
 
     fn remove_slab(&mut self, slab_idx: Token) -> Option<Entry> {
-        debug!("removing timer slab {:?}", slab_idx);
         let mut entry = match self.slab.remove(slab_idx) {
             Some(e) => e,
             None => return None,

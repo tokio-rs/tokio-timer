@@ -6,6 +6,8 @@
 //! timing wheel's worst case is `O(n)` where `n` is the number of pending
 //! timeouts.
 //!
+//! Most useful functions are on [`Timer`](struct.Timer.html).
+//!
 //! ## Example
 //!
 //! Here is a simple example of how to use the timer.
@@ -85,17 +87,17 @@
 
 #![deny(warnings, missing_docs)]
 
+#[macro_use]
 extern crate futures;
 extern crate slab;
 
-#[macro_use]
-extern crate log;
-
+mod interval;
 mod mpmc;
 mod timer;
 mod wheel;
 mod worker;
 
+pub use interval::Interval;
 pub use timer::{Sleep, Timer, Timeout, TimerError, TimeoutError};
 
 use std::cmp;
