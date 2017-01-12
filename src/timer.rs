@@ -256,6 +256,35 @@ impl Drop for Sleep {
  *
  */
 
+impl<T> Timeout<T> {
+    /// Gets a reference to the underlying future in this timeout.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying future has already been consumed.
+    pub fn get_ref(&self) -> &T {
+        self.future.as_ref().expect("the future has already been consumed")
+    }
+
+    /// Gets a mutable reference to the underlying future in this timeout.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying future has already been consumed.
+    pub fn get_mut(&mut self) -> &mut T {
+        self.future.as_mut().expect("the future has already been consumed")
+    }
+
+    /// Consumes this timeout, returning the underlying future.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying future has already been consumed.
+    pub fn into_inner(self) -> T {
+        self.future.expect("the future has already been consumed")
+    }
+}
+
 impl<F, E> Future for Timeout<F>
     where F: Future<Error = E>,
           E: From<TimeoutError<F>>,
@@ -297,6 +326,35 @@ impl<F, E> Future for Timeout<F>
  * ===== TimeoutStream ====
  *
  */
+
+impl<T> TimeoutStream<T> {
+    /// Gets a reference to the underlying stream in this timeout.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying stream has already been consumed.
+    pub fn get_ref(&self) -> &T {
+        self.stream.as_ref().expect("the stream has already been consumed")
+    }
+
+    /// Gets a mutable reference to the underlying stream in this timeout.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying stream has already been consumed.
+    pub fn get_mut(&mut self) -> &mut T {
+        self.stream.as_mut().expect("the stream has already been consumed")
+    }
+
+    /// Consumes this timeout, returning the underlying stream.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the underlying stream has already been consumed.
+    pub fn into_inner(self) -> T {
+        self.stream.expect("the stream has already been consumed")
+    }
+}
 
 impl<T, E> Stream for TimeoutStream<T>
     where T: Stream<Error = E>,
