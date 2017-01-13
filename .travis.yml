@@ -3,7 +3,7 @@ language: rust
 rust:
   - nightly
   - stable
-  - 1.10.0
+  - 1.14.0
 
 os:
   - linux
