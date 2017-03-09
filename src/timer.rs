@@ -120,7 +120,7 @@ impl Timer {
         let sleep = if at > now {
             self.sleep(at - now)
         } else {
-            self.sleep(dur)
+            self.sleep(Duration::from_millis(0))
         };
 
         interval::new(sleep, dur)
