@@ -258,3 +258,45 @@ fn test_interval_twice() {
 
     e1.assert_is_about(dur * 2);
 }
+
+#[test]
+fn test_interval_at_once() {
+    let timer = Timer::default();
+    let delay = Duration::from_millis(500);
+    let dur = Duration::from_millis(300);
+    let mut interval = timer.interval_at(Instant::now() + delay, dur).wait();
+
+    let e1 = support::time(|| {
+        interval.next();
+    });
+
+    e1.assert_is_about(delay);
+}
+
+#[test]
+fn test_interval_at_twice() {
+    let timer = Timer::default();
+    let delay = Duration::from_millis(500);
+    let dur = Duration::from_millis(300);
+    let mut interval = timer.interval_at(Instant::now() + delay, dur).wait();
+
+    let e1 = support::time(|| {
+        interval.next();
+        interval.next();
+    });
+
+    e1.assert_is_about(delay + dur);
+}
+
+#[test]
+fn test_interval_at_past() {
+    let timer = Timer::default();
+    let dur = Duration::from_millis(300);
+    let mut interval = timer.interval_at(Instant::now() - Duration::from_millis(200), dur).wait();
+
+    let e1 = support::time(|| {
+        interval.next();
+    });
+
+    e1.assert_is_about(Duration::from_millis(0));
+}
