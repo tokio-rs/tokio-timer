@@ -38,7 +38,7 @@ pub struct TimeoutStream<T> {
 }
 
 /// The error type for timer operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimerError {
     /// The requested timeout exceeds the timer's `max_timeout` setting.
     TooLong,
