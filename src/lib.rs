@@ -149,6 +149,8 @@ impl Builder {
 
     /// Set the number of slots in the timer wheel.
     ///
+    /// The number of slots must be a power of two.
+    ///
     /// See the crate docs for more detail.
     ///
     /// Defaults to 4,096.

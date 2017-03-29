@@ -81,7 +81,7 @@ impl Wheel {
         let mask = num_slots - 1;
 
         // Check that the number of slots requested is, in fact, a power of two
-        assert!(num_slots & mask == 0);
+        assert!(num_slots & mask == 0, "num_slots must be a power of two");
 
         Wheel {
             wheel: vec![Slot { head: EMPTY, next_timeout: None }; num_slots],
