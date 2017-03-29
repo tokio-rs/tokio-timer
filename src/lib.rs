@@ -98,7 +98,7 @@ mod wheel;
 mod worker;
 
 pub use interval::Interval;
-pub use timer::{Sleep, Timer, Timeout, TimerError, TimeoutError};
+pub use timer::{Sleep, Timer, Timeout, TimeoutStream, TimerError, TimeoutError};
 
 use std::cmp;
 use std::time::Duration;
