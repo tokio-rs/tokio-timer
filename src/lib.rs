@@ -85,7 +85,7 @@
 //! `initial_capacity`, in which case timeout storage is allocated in chunks as
 //! needed. Timeout storage can grow but never shrink.
 
-#![deny(warnings, missing_docs)]
+#![deny(warnings, missing_docs, missing_debug_implementations)]
 
 #[macro_use]
 extern crate futures;
@@ -106,6 +106,7 @@ use std::time::Duration;
 /// Configures and builds a `Timer`
 ///
 /// A `Builder` is obtained by calling `wheel()`.
+#[derive(Debug)]
 pub struct Builder {
     tick_duration: Option<Duration>,
     num_slots: Option<usize>,

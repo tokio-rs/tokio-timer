@@ -17,6 +17,7 @@ pub struct Timer {
 
 /// A `Future` that does nothing and completes after the requested duration
 #[must_use = "futures do nothing unless polled"]
+#[derive(Debug)]
 pub struct Sleep {
     timer: Timer,
     when: Instant,
@@ -25,12 +26,14 @@ pub struct Sleep {
 
 /// Allows a given `Future` to execute for a max duration
 #[must_use = "futures do nothing unless polled"]
+#[derive(Debug)]
 pub struct Timeout<T> {
     future: Option<T>,
     sleep: Sleep,
 }
 
 /// Allows a given `Stream` to take a max duration to yield the next value.
+#[derive(Debug)]
 pub struct TimeoutStream<T> {
     stream: Option<T>,
     duration: Duration,
@@ -130,6 +133,12 @@ impl Timer {
 impl Default for Timer {
     fn default() -> Timer {
         wheel().build()
+    }
+}
+
+impl fmt::Debug for Timer {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "Timer")
     }
 }
 

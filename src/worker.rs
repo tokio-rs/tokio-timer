@@ -16,7 +16,6 @@ pub struct Worker {
 }
 
 /// Communicate with the timer thread
-#[derive(Clone)]
 struct Tx {
     chan: Arc<Chan>,
     worker: Thread,

@@ -7,6 +7,7 @@ use std::time::Duration;
 /// A stream representing notifications at fixed interval
 ///
 /// Intervals are created through `Timer::interval`.
+#[derive(Debug)]
 pub struct Interval {
     sleep: Sleep,
     duration: Duration,
