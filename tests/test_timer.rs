@@ -108,7 +108,7 @@ fn test_timeout_with_future_completes_first() {
 
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(100));
-        tx.complete(Ok::<&'static str, io::Error>("done"));
+        tx.send(Ok::<&'static str, io::Error>("done")).expect("send");
     });
 
     assert_eq!("done", to.wait().unwrap());
@@ -119,7 +119,7 @@ fn test_timeout_with_timeout_completes_first() {
     let timer = Timer::default();
     let dur = Duration::from_millis(300);
 
-    let (tx, rx) = oneshot::channel();
+    let (_tx, rx) = oneshot::channel::<Result<&'static str, io::Error>>();
     let rx = rx.then(|res| {
         match res {
             Ok(Ok(v)) => Ok(v),
@@ -132,9 +132,6 @@ fn test_timeout_with_timeout_completes_first() {
 
     let err: io::Error = to.wait().unwrap_err();
     assert_eq!(io::ErrorKind::TimedOut, err.kind());
-
-    // Mostly to make the type inferencer happy
-    tx.complete(Ok::<&'static str, io::Error>("done"));
 }
 
 #[test]
@@ -156,7 +153,7 @@ fn test_timeout_with_future_errors_first() {
 
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(100));
-        tx.complete(Err::<&'static str, io::Error>(err));
+        tx.send(Err::<&'static str, io::Error>(err)).expect("send");
     });
 
     let err = to.wait().unwrap_err();
