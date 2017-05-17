@@ -60,7 +60,10 @@ impl Worker {
         let chan2 = chan.clone();
 
         // Spawn the worker thread
-        let t = thread::spawn(move || run(chan2, wheel));
+        let t = thread::Builder::new()
+            .name("tokio-timer".to_owned())
+            .spawn(move || run(chan2, wheel))
+            .expect("thread::spawn");
 
         Worker {
             tx: Arc::new(Tx {
