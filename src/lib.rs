@@ -114,6 +114,7 @@ pub struct Builder {
     max_capacity: Option<usize>,
     max_timeout: Option<Duration>,
     channel_capacity: Option<usize>,
+    thread_name: Option<String>,
 }
 
 /// Configure and build a `Timer` backed by a hashed wheel.
@@ -125,6 +126,7 @@ pub fn wheel() -> Builder {
         max_capacity: None,
         max_timeout: None,
         channel_capacity: None,
+        thread_name: None,
     }
 }
 
@@ -227,6 +229,16 @@ impl Builder {
     /// Defaults to 128
     pub fn channel_capacity(mut self, channel_capacity: usize) -> Self {
         self.channel_capacity = Some(channel_capacity);
+        self
+    }
+
+    /// Set the name for the spawned thread.
+    ///
+    /// See also the runtime details in crate docs.
+    ///
+    /// Defaults to "tokio-timer".
+    pub fn thread_name<S: Into<String>>(mut self, name: S) -> Self {
+        self.thread_name = Some(name.into());
         self
     }
 

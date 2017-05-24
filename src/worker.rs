@@ -43,7 +43,7 @@ type ModQueue = Queue<ModTimeout, ()>;
 
 impl Worker {
     /// Spawn a worker, returning a handle to allow communication
-    pub fn spawn(mut wheel: Wheel, builder: &Builder) -> Worker {
+    pub fn spawn(mut wheel: Wheel, builder: Builder) -> Worker {
         let tolerance = builder.get_tick_duration();
         let max_timeout = builder.get_max_timeout();
         let capacity = builder.get_channel_capacity();
@@ -61,7 +61,7 @@ impl Worker {
 
         // Spawn the worker thread
         let t = thread::Builder::new()
-            .name("tokio-timer".to_owned())
+            .name(builder.thread_name.unwrap_or_else(|| "tokio-timer".to_owned()))
             .spawn(move || run(chan2, wheel))
             .expect("thread::spawn");
 

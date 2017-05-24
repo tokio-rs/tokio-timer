@@ -60,7 +60,7 @@ pub enum TimeoutError<T> {
 
 pub fn build(builder: Builder) -> Timer {
     let wheel = Wheel::new(&builder);
-    let worker = Worker::spawn(wheel, &builder);
+    let worker = Worker::spawn(wheel, builder);
 
     Timer { worker: worker }
 }
