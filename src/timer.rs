@@ -209,7 +209,7 @@ impl Future for Sleep {
                 }
 
                 // Get the current task handle
-                let task = task::park();
+                let task = task::current();
 
                 match self.timer.worker.set_timeout(self.when, task.clone()) {
                     Ok(token) => {
@@ -217,19 +217,19 @@ impl Future for Sleep {
                     }
                     Err(task) => {
                         // The timer is overloaded, yield the current task
-                        task.unpark();
+                        task.notify();
                         return Ok(Async::NotReady);
                     }
                 }
             }
             Some((ref task, token)) => {
-                if task.is_current() {
+                if task.will_notify_current() {
                     // Nothing more to do, the notify on timeout has already
                     // been registered
                     return Ok(Async::NotReady);
                 }
 
-                let task = task::park();
+                let task = task::current();
 
                 // The timeout has been moved to another task, in this case the
                 // timer has to be notified
@@ -237,7 +237,7 @@ impl Future for Sleep {
                     Ok(_) => (task, token),
                     Err(task) => {
                         // Overloaded timer, yield hte current task
-                        task.unpark();
+                        task.notify();
                         return Ok(Async::NotReady);
                     }
                 }

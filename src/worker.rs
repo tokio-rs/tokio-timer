@@ -130,7 +130,7 @@ fn run(chan: Arc<Chan>, mut wheel: Wheel) {
 
         // Fire off all expired timeouts
         while let Some(task) = wheel.poll(now) {
-            task.unpark();
+            task.notify();
         }
 
         // As long as the wheel has capacity to manage new timeouts, read off
