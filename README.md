@@ -1,3 +1,10 @@
+# Development has moved
+
+This repository is scheduled for deprecation in favor of [tokio](http://github.com/tokio-rs/tokio).
+
+Development is continuing over there. This repository will be kept around for
+historical reasons.
+
 # tokio-timer
 
 Timer facilities for Tokio
